@@ -19,8 +19,10 @@ app.get('/', (req, res) => {
 // Routes
 // ==========================================================
 import authRoutes from './routers/authRoutes.js'
+import userRoutes from './routers/userRoutes.js'
 
 app.use('/api/auth', authRoutes)
+app.use('/api/user', userRoutes)
 
 // ==========================================================
 
