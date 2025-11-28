@@ -15,6 +15,15 @@ app.get('/', (req, res) => {
   res.send({ message: 'API is running...' })
 })
 
+// ==========================================================
+// Routes
+// ==========================================================
+import authRoutes from './routers/authRoutes.js'
+
+app.use('/api/auth', authRoutes)
+
+// ==========================================================
+
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`)
 
