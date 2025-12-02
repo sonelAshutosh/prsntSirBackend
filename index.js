@@ -20,9 +20,13 @@ app.get('/', (req, res) => {
 // ==========================================================
 import authRoutes from './routers/authRoutes.js'
 import userRoutes from './routers/userRoutes.js'
+import studentRoutes from './routers/studentRoutes.js'
+import classroomRoutes from './routers/classroomRoutes.js'
 
 app.use('/api/auth', authRoutes)
 app.use('/api/user', userRoutes)
+app.use('/api/student', studentRoutes)
+app.use('/api/classroom', classroomRoutes)
 
 // ==========================================================
 
