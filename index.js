@@ -22,11 +22,13 @@ import authRoutes from './routers/authRoutes.js'
 import userRoutes from './routers/userRoutes.js'
 import studentRoutes from './routers/studentRoutes.js'
 import classroomRoutes from './routers/classroomRoutes.js'
+import attendanceRoutes from './routers/attendanceRoutes.js'
 
 app.use('/api/auth', authRoutes)
 app.use('/api/user', userRoutes)
 app.use('/api/student', studentRoutes)
 app.use('/api/classroom', classroomRoutes)
+app.use('/api/attendance', attendanceRoutes)
 
 // ==========================================================
 
