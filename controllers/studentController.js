@@ -30,19 +30,19 @@ export const getStudentProfile = async (req, res) => {
 
     // Generate QR code if it doesn't exist
     if (!studentProfile.qrCode) {
-      const qrData = {
-        studentId: studentProfile.studentId,
-        userId: req.user._id.toString(),
-        name: `${req.user.firstName} ${req.user.lastName}`,
-        email: req.user.email,
-      }
+      // QR code contains ONLY the studentId for simplicity and reliability
+      const qrData = studentProfile.studentId
 
       // Generate QR code as data URL
-      const qrCodeDataURL = await QRCode.toDataURL(JSON.stringify(qrData), {
-        errorCorrectionLevel: 'H',
+      const qrCodeDataURL = await QRCode.toDataURL(qrData, {
+        errorCorrectionLevel: 'M', // Medium error correction is sufficient
         type: 'image/png',
         width: 300,
         margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF',
+        },
       })
 
       studentProfile.qrCode = qrCodeDataURL
@@ -96,20 +96,18 @@ export const regenerateQRCode = async (req, res) => {
       })
     }
 
-    // Generate new QR code
-    const qrData = {
-      studentId: studentProfile.studentId,
-      userId: req.user._id.toString(),
-      name: `${req.user.firstName} ${req.user.lastName}`,
-      email: req.user.email,
-      timestamp: Date.now(), // Add timestamp for uniqueness
-    }
+    // Generate new QR code with only studentId
+    const qrData = studentProfile.studentId
 
-    const qrCodeDataURL = await QRCode.toDataURL(JSON.stringify(qrData), {
-      errorCorrectionLevel: 'H',
+    const qrCodeDataURL = await QRCode.toDataURL(qrData, {
+      errorCorrectionLevel: 'M',
       type: 'image/png',
       width: 300,
       margin: 2,
+      color: {
+        dark: '#000000',
+        light: '#FFFFFF',
+      },
     })
 
     studentProfile.qrCode = qrCodeDataURL

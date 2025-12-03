@@ -43,6 +43,28 @@ export const createAttendanceSession = async (req, res) => {
       })
     }
 
+    // Check if there's already an active session for this classroom
+    const activeSession = await AttendanceSession.findOne({
+      classroomId,
+      endedAt: { $exists: false }, // Session not ended yet
+    })
+
+    if (activeSession) {
+      return res.status(400).json({
+        success: false,
+        message: 'An active session already exists for this classroom',
+        data: {
+          activeSession: {
+            id: activeSession._id,
+            classroomId: activeSession.classroomId,
+            mode: activeSession.mode,
+            topic: activeSession.topic,
+            createdAt: activeSession.createdAt,
+          },
+        },
+      })
+    }
+
     // Create attendance session
     const session = await AttendanceSession.create({
       classroomId,
@@ -424,6 +446,197 @@ export const getStudentAttendanceHistory = async (req, res) => {
     })
   } catch (error) {
     console.error('Get student history error:', error)
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message,
+    })
+  }
+}
+
+// @desc    Mark attendance by scanning student QR code
+// @route   POST /api/attendance/session/:sessionId/scan-qr
+// @access  Private (Teacher only)
+export const markAttendanceByQR = async (req, res) => {
+  try {
+    const { sessionId } = req.params
+    const { qrData } = req.body
+
+    // Validate
+    if (!qrData) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide QR code data',
+      })
+    }
+
+    // Get session
+    const session = await AttendanceSession.findById(sessionId)
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        message: 'Session not found',
+      })
+    }
+
+    // Check if session is still active (not ended)
+    if (session.endedAt) {
+      return res.status(400).json({
+        success: false,
+        message: 'This session has already ended',
+      })
+    }
+
+    // Verify teacher has access
+    const classroom = await Classroom.findById(session.classroomId)
+    if (!classroom.teachers.includes(req.user._id)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      })
+    }
+
+    // Find student by QR data (studentId from QR code)
+    const studentProfile = await StudentProfile.findOne({ studentId: qrData })
+    if (!studentProfile) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found. Invalid QR code.',
+      })
+    }
+
+    // Verify student is enrolled in this classroom
+    const student = await User.findById(studentProfile.userId)
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student user not found',
+      })
+    }
+
+    // Check enrollment in either User.enrolledClasses or StudentProfile.classesJoined
+    const isEnrolledInUser =
+      student.enrolledClasses &&
+      student.enrolledClasses.includes(session.classroomId)
+    const isEnrolledInProfile =
+      studentProfile.classesJoined &&
+      studentProfile.classesJoined.includes(session.classroomId)
+
+    if (!isEnrolledInUser && !isEnrolledInProfile) {
+      return res.status(400).json({
+        success: false,
+        message: 'Student is not enrolled in this classroom',
+      })
+    }
+
+    // Check if attendance already marked
+    const existingRecord = await AttendanceRecord.findOne({
+      studentId: studentProfile.userId,
+      sessionId: session._id,
+    })
+
+    if (existingRecord) {
+      return res.status(400).json({
+        success: false,
+        message: `Attendance already marked as ${existingRecord.status} for this student`,
+        data: {
+          student: {
+            name: `${student.firstName} ${student.lastName}`,
+            studentId: studentProfile.studentId,
+            status: existingRecord.status,
+          },
+        },
+      })
+    }
+
+    // Create attendance record
+    const record = await AttendanceRecord.create({
+      studentId: studentProfile.userId,
+      sessionId: session._id,
+      classroomId: session.classroomId,
+      status: 'PRESENT',
+      markedBy: req.user._id,
+    })
+
+    res.status(200).json({
+      success: true,
+      message: 'Attendance marked successfully',
+      data: {
+        student: {
+          id: student._id,
+          name: `${student.firstName} ${student.lastName}`,
+          studentId: studentProfile.studentId,
+          email: student.email,
+        },
+        record: {
+          id: record._id,
+          status: record.status,
+          markedAt: record.createdAt,
+        },
+      },
+    })
+  } catch (error) {
+    console.error('Mark attendance by QR error:', error)
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message,
+    })
+  }
+}
+
+// @desc    Get active session for a classroom
+// @route   GET /api/attendance/classroom/:classroomId/active-session
+// @access  Private (Teacher only)
+export const getActiveSession = async (req, res) => {
+  try {
+    const { classroomId } = req.params
+
+    // Verify classroom exists and teacher has access
+    const classroom = await Classroom.findById(classroomId)
+    if (!classroom) {
+      return res.status(404).json({
+        success: false,
+        message: 'Classroom not found',
+      })
+    }
+
+    if (!classroom.teachers.includes(req.user._id)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      })
+    }
+
+    // Find active session (not ended)
+    const activeSession = await AttendanceSession.findOne({
+      classroomId,
+      endedAt: { $exists: false },
+    })
+
+    if (!activeSession) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          activeSession: null,
+        },
+      })
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        activeSession: {
+          id: activeSession._id,
+          classroomId: activeSession.classroomId,
+          mode: activeSession.mode,
+          topic: activeSession.topic,
+          createdAt: activeSession.createdAt,
+        },
+      },
+    })
+  } catch (error) {
+    console.error('Get active session error:', error)
     res.status(500).json({
       success: false,
       message: 'Server error',
