@@ -170,6 +170,71 @@ export const getSessionStudents = async (req, res) => {
   }
 }
 
+// @desc    Get marked students for a session
+// @route   GET /api/attendance/session/:sessionId/marked
+// @access  Private (Teacher only)
+export const getMarkedStudents = async (req, res) => {
+  try {
+    const { sessionId } = req.params
+
+    // Get session
+    const session = await AttendanceSession.findById(sessionId)
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        message: 'Session not found',
+      })
+    }
+
+    // Verify teacher has access
+    const classroom = await Classroom.findById(session.classroomId)
+    if (!classroom.teachers.includes(req.user._id)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      })
+    }
+
+    // Get attendance records for this session
+    const records = await AttendanceRecord.find({
+      sessionId: session._id,
+      status: 'PRESENT',
+    }).populate('studentId', 'firstName lastName email profileImage')
+
+    // Get student profiles to include studentId
+    const markedStudents = await Promise.all(
+      records.map(async (record) => {
+        const studentProfile = await StudentProfile.findOne({
+          userId: record.studentId._id,
+        })
+
+        return {
+          id: record.studentId._id,
+          name: `${record.studentId.firstName} ${record.studentId.lastName}`,
+          studentId: studentProfile?.studentId || 'N/A',
+          email: record.studentId.email,
+          scannedAt: new Date(record.createdAt).toLocaleTimeString(),
+          status: record.status,
+        }
+      })
+    )
+
+    res.status(200).json({
+      success: true,
+      data: {
+        markedStudents,
+      },
+    })
+  } catch (error) {
+    console.error('Get marked students error:', error)
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message,
+    })
+  }
+}
+
 // @desc    Mark student attendance
 // @route   POST /api/attendance/session/:sessionId/mark
 // @access  Private (Teacher only)

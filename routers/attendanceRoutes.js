@@ -2,6 +2,7 @@ import express from 'express'
 import {
   createAttendanceSession,
   getSessionStudents,
+  getMarkedStudents,
   markAttendance,
   endAttendanceSession,
   getClassroomSessions,
@@ -21,6 +22,9 @@ router.post('/session/create', createAttendanceSession)
 
 // GET /api/attendance/session/:sessionId/students - Get students for session
 router.get('/session/:sessionId/students', getSessionStudents)
+
+// GET /api/attendance/session/:sessionId/marked - Get marked students for session
+router.get('/session/:sessionId/marked', getMarkedStudents)
 
 // POST /api/attendance/session/:sessionId/mark - Mark student attendance
 router.post('/session/:sessionId/mark', markAttendance)
