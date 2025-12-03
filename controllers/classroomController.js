@@ -1,5 +1,6 @@
 import Classroom from '../models/classroom.js'
 import User from '../models/user.js'
+import StudentProfile from '../models/studentProfile.js'
 
 // Generate a unique 6-character classroom code
 const generateClassCode = () => {
@@ -146,6 +147,9 @@ export const getClassroomById = async (req, res) => {
           teachers: classroom.teachers,
           createdAt: classroom.createdAt,
           updatedAt: classroom.updatedAt,
+          studentCount: await StudentProfile.countDocuments({
+            classesJoined: classroom._id,
+          }),
         },
       },
     })

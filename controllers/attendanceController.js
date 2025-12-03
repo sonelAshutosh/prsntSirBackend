@@ -17,7 +17,7 @@ export const createAttendanceSession = async (req, res) => {
       })
     }
 
-    const { classroomId, mode } = req.body
+    const { classroomId, mode, topic } = req.body
 
     // Validate required fields
     if (!classroomId) {
@@ -48,6 +48,7 @@ export const createAttendanceSession = async (req, res) => {
       classroomId,
       createdByUserId: req.user._id,
       mode: mode || 'MANUAL',
+      topic: topic || 'General Class',
     })
 
     res.status(201).json({
@@ -58,6 +59,7 @@ export const createAttendanceSession = async (req, res) => {
           id: session._id,
           classroomId: session.classroomId,
           mode: session.mode,
+          topic: session.topic,
           createdAt: session.createdAt,
         },
       },
@@ -117,6 +119,12 @@ export const getSessionStudents = async (req, res) => {
     res.status(200).json({
       success: true,
       data: {
+        session: {
+          id: session._id,
+          topic: session.topic,
+          mode: session.mode,
+          createdAt: session.createdAt,
+        },
         students: unmarkedStudents.map((profile) => ({
           id: profile.userId._id,
           firstName: profile.userId.firstName,
@@ -272,6 +280,150 @@ export const endAttendanceSession = async (req, res) => {
     })
   } catch (error) {
     console.error('End session error:', error)
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message,
+    })
+  }
+}
+
+// @desc    Get all sessions for a classroom
+// @route   GET /api/attendance/classroom/:classroomId/sessions
+// @access  Private (Teacher only)
+export const getClassroomSessions = async (req, res) => {
+  try {
+    const { classroomId } = req.params
+
+    // Verify teacher has access
+    const classroom = await Classroom.findById(classroomId)
+    if (!classroom) {
+      return res.status(404).json({
+        success: false,
+        message: 'Classroom not found',
+      })
+    }
+
+    if (!classroom.teachers.includes(req.user._id)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      })
+    }
+
+    // Get sessions (only completed sessions)
+    const sessions = await AttendanceSession.find({
+      classroomId,
+      endedAt: { $exists: true },
+    })
+      .sort({ createdAt: -1 })
+      .lean()
+
+    // Enrich sessions with stats
+    const sessionsWithStats = await Promise.all(
+      sessions.map(async (session) => {
+        const records = await AttendanceRecord.find({ sessionId: session._id })
+        const totalStudents = await StudentProfile.countDocuments({
+          classesJoined: classroomId,
+        })
+        const presentCount = records.filter(
+          (r) => r.status === 'PRESENT'
+        ).length
+
+        return {
+          id: session._id,
+          date: session.createdAt,
+          type: session.mode,
+          status: session.endedAt ? 'completed' : 'active',
+          totalStudents,
+          presentStudents: presentCount,
+          topic:
+            session.topic ||
+            `Session ${new Date(session.createdAt).toLocaleDateString()}`,
+        }
+      })
+    )
+
+    res.status(200).json({
+      success: true,
+      data: {
+        sessions: sessionsWithStats,
+      },
+    })
+  } catch (error) {
+    console.error('Get classroom sessions error:', error)
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message,
+    })
+  }
+}
+
+// @desc    Get student attendance history for a classroom
+// @route   GET /api/attendance/classroom/:classroomId/student
+// @access  Private (Student only)
+export const getStudentAttendanceHistory = async (req, res) => {
+  try {
+    const { classroomId } = req.params
+    const studentId = req.user._id
+
+    // Verify student is enrolled
+    const studentProfile = await StudentProfile.findOne({
+      userId: studentId,
+      classesJoined: classroomId,
+    })
+
+    if (!studentProfile) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not enrolled in this classroom',
+      })
+    }
+
+    // Get all sessions for this classroom
+    const sessions = await AttendanceSession.find({
+      classroomId,
+      endedAt: { $exists: true }, // Only completed sessions
+    })
+      .sort({ createdAt: -1 })
+      .lean()
+
+    // Get attendance records for this student
+    const records = await AttendanceRecord.find({
+      studentId: studentId,
+      classroomId,
+    })
+
+    // Map sessions to include student status
+    const history = sessions.map((session) => {
+      const record = records.find(
+        (r) => r.sessionId.toString() === session._id.toString()
+      )
+      return {
+        id: session._id,
+        date: session.createdAt,
+        topic:
+          session.topic ||
+          `Session ${new Date(session.createdAt).toLocaleDateString()}`,
+        status: record ? record.status.toLowerCase() : 'absent', // Default to absent if no record found for a completed session
+        markedAt: record
+          ? new Date(record.createdAt).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : null,
+      }
+    })
+
+    res.status(200).json({
+      success: true,
+      data: {
+        history,
+      },
+    })
+  } catch (error) {
+    console.error('Get student history error:', error)
     res.status(500).json({
       success: false,
       message: 'Server error',

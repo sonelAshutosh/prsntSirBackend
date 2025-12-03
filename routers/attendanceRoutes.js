@@ -4,6 +4,8 @@ import {
   getSessionStudents,
   markAttendance,
   endAttendanceSession,
+  getClassroomSessions,
+  getStudentAttendanceHistory,
 } from '../controllers/attendanceController.js'
 import { protect } from '../middleware/authMiddleware.js'
 
@@ -23,5 +25,11 @@ router.post('/session/:sessionId/mark', markAttendance)
 
 // POST /api/attendance/session/:sessionId/end - End attendance session
 router.post('/session/:sessionId/end', endAttendanceSession)
+
+// GET /api/attendance/classroom/:classroomId/sessions - Get all sessions for a classroom (Teacher)
+router.get('/classroom/:classroomId/sessions', getClassroomSessions)
+
+// GET /api/attendance/classroom/:classroomId/student - Get student attendance history (Student)
+router.get('/classroom/:classroomId/student', getStudentAttendanceHistory)
 
 export default router

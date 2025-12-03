@@ -13,7 +13,7 @@ const AttendanceSessionSchema = new mongoose.Schema(
       required: true,
     },
     mode: { type: String, enum: ['MANUAL', 'QR'], default: 'MANUAL' },
-    endedAt: { type: Date },
+    topic: { type: String },
     endedAt: { type: Date },
   },
   { timestamps: true }
