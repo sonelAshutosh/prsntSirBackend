@@ -509,3 +509,60 @@ export const removeCoTeacher = async (req, res) => {
     })
   }
 }
+
+// @desc    Get students enrolled in a classroom
+// @route   GET /api/classroom/:id/students
+// @access  Private (Teacher only)
+export const getClassroomStudents = async (req, res) => {
+  try {
+    // Check if user is a teacher
+    if (req.user.role !== 'TEACHER') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Only teachers can access this endpoint.',
+      })
+    }
+
+    const classroom = await Classroom.findById(req.params.id)
+
+    if (!classroom) {
+      return res.status(404).json({
+        success: false,
+        message: 'Classroom not found',
+      })
+    }
+
+    // Check if user is a teacher of this classroom
+    if (!classroom.teachers.includes(req.user._id)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You are not a teacher of this classroom.',
+      })
+    }
+
+    // Find all student profiles that have this classroom in their classesJoined array
+    const students = await StudentProfile.find({
+      classesJoined: classroom._id,
+    })
+      .populate('userId', 'firstName lastName email profileImage')
+      .sort({ createdAt: 1 }) // Sort by join date (oldest first)
+
+    res.status(200).json({
+      success: true,
+      data: {
+        students: students.map((student) => ({
+          studentId: student.studentId,
+          userId: student.userId,
+          joinedAt: student.createdAt,
+        })),
+      },
+    })
+  } catch (error) {
+    console.error('Get classroom students error:', error)
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message,
+    })
+  }
+}

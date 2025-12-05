@@ -8,6 +8,7 @@ import {
   regenerateClassCode,
   addCoTeacher,
   removeCoTeacher,
+  getClassroomStudents,
 } from '../controllers/classroomController.js'
 import { protect } from '../middleware/authMiddleware.js'
 
@@ -24,6 +25,9 @@ router.get('/my-classes', getTeacherClassrooms)
 
 // GET /api/classroom/:id - Get classroom by ID
 router.get('/:id', getClassroomById)
+
+// GET /api/classroom/:id/students - Get students enrolled in classroom
+router.get('/:id/students', getClassroomStudents)
 
 // PUT /api/classroom/:id - Update classroom
 router.put('/:id', updateClassroom)
