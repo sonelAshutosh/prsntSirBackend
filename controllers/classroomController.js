@@ -94,7 +94,7 @@ export const getTeacherClassrooms = async (req, res) => {
     const classrooms = await Classroom.find({
       teachers: req.user._id,
     })
-      .populate('teachers', 'firstName lastName email')
+      .populate('teachers', 'firstName lastName email profileImage')
       .sort({ createdAt: -1 })
 
     res.status(200).json({
@@ -466,6 +466,15 @@ export const removeCoTeacher = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Teacher not found in this classroom',
+      })
+    }
+
+    // Prevent removing the classroom creator (first teacher at index 0)
+    if (teacherIndex === 0) {
+      return res.status(403).json({
+        success: false,
+        message:
+          'Cannot remove the classroom creator. The creator must always remain as a teacher.',
       })
     }
 

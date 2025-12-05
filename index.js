@@ -8,7 +8,7 @@ dotenv.config()
 const app = express()
 const PORT = process.env.PORT || 5000
 
-app.use(express.json())
+app.use(express.json({ limit: '2mb' })) // Increased limit for base64 images
 app.use(cors())
 
 app.get('/', (req, res) => {

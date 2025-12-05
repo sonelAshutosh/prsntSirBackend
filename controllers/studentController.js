@@ -223,7 +223,13 @@ export const getStudentClassrooms = async (req, res) => {
 
     const studentProfile = await StudentProfile.findOne({
       userId: req.user._id,
-    }).populate('classesJoined')
+    }).populate({
+      path: 'classesJoined',
+      populate: {
+        path: 'teachers',
+        select: 'firstName lastName email profileImage',
+      },
+    })
 
     if (!studentProfile) {
       return res.status(200).json({
@@ -242,6 +248,7 @@ export const getStudentClassrooms = async (req, res) => {
           name: classroom.name,
           subject: classroom.subject,
           code: classroom.code,
+          teachers: classroom.teachers,
           createdAt: classroom.createdAt,
           updatedAt: classroom.updatedAt,
         })),
