@@ -6,6 +6,8 @@ import {
   updateClassroom,
   deleteClassroom,
   regenerateClassCode,
+  addCoTeacher,
+  removeCoTeacher,
 } from '../controllers/classroomController.js'
 import { protect } from '../middleware/authMiddleware.js'
 
@@ -31,5 +33,11 @@ router.delete('/:id', deleteClassroom)
 
 // POST /api/classroom/:id/regenerate-code - Regenerate classroom code
 router.post('/:id/regenerate-code', regenerateClassCode)
+
+// POST /api/classroom/:id/add-coteacher - Add co-teacher to classroom
+router.post('/:id/add-coteacher', addCoTeacher)
+
+// POST /api/classroom/:id/remove-coteacher - Remove co-teacher from classroom
+router.post('/:id/remove-coteacher', removeCoTeacher)
 
 export default router

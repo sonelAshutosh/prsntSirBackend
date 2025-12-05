@@ -93,7 +93,9 @@ export const getTeacherClassrooms = async (req, res) => {
 
     const classrooms = await Classroom.find({
       teachers: req.user._id,
-    }).sort({ createdAt: -1 })
+    })
+      .populate('teachers', 'firstName lastName email')
+      .sort({ createdAt: -1 })
 
     res.status(200).json({
       success: true,
@@ -318,6 +320,179 @@ export const regenerateClassCode = async (req, res) => {
     })
   } catch (error) {
     console.error('Regenerate classroom code error:', error)
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message,
+    })
+  }
+}
+
+// @desc    Add co-teacher to classroom
+// @route   POST /api/classroom/:id/add-coteacher
+// @access  Private (Teacher only)
+export const addCoTeacher = async (req, res) => {
+  try {
+    const { teacherEmail } = req.body
+
+    if (!teacherEmail) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide teacher email',
+      })
+    }
+
+    const classroom = await Classroom.findById(req.params.id)
+
+    if (!classroom) {
+      return res.status(404).json({
+        success: false,
+        message: 'Classroom not found',
+      })
+    }
+
+    // Check if user is a teacher of this classroom
+    if (
+      req.user.role !== 'TEACHER' ||
+      !classroom.teachers.includes(req.user._id)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You are not a teacher of this classroom.',
+      })
+    }
+
+    // Find the teacher to add
+    const teacherToAdd = await User.findOne({
+      email: teacherEmail.toLowerCase(),
+      role: 'TEACHER',
+    })
+
+    if (!teacherToAdd) {
+      return res.status(404).json({
+        success: false,
+        message: 'Teacher not found or user is not a teacher',
+      })
+    }
+
+    // Check if teacher is already added
+    if (classroom.teachers.includes(teacherToAdd._id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'This teacher is already a co-teacher of this classroom',
+      })
+    }
+
+    // Add teacher to classroom
+    classroom.teachers.push(teacherToAdd._id)
+    const updatedClassroom = await classroom.save()
+
+    // Populate teachers for response
+    await updatedClassroom.populate('teachers', 'firstName lastName email')
+
+    res.status(200).json({
+      success: true,
+      message: 'Co-teacher added successfully',
+      data: {
+        classroom: {
+          id: updatedClassroom._id,
+          name: updatedClassroom.name,
+          subject: updatedClassroom.subject,
+          code: updatedClassroom.code,
+          teachers: updatedClassroom.teachers,
+          createdAt: updatedClassroom.createdAt,
+          updatedAt: updatedClassroom.updatedAt,
+        },
+      },
+    })
+  } catch (error) {
+    console.error('Add co-teacher error:', error)
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message,
+    })
+  }
+}
+
+// @desc    Remove co-teacher from classroom
+// @route   POST /api/classroom/:id/remove-coteacher
+// @access  Private (Teacher only)
+export const removeCoTeacher = async (req, res) => {
+  try {
+    const { teacherId } = req.body
+
+    if (!teacherId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide teacher ID',
+      })
+    }
+
+    const classroom = await Classroom.findById(req.params.id)
+
+    if (!classroom) {
+      return res.status(404).json({
+        success: false,
+        message: 'Classroom not found',
+      })
+    }
+
+    // Check if user is a teacher of this classroom
+    if (
+      req.user.role !== 'TEACHER' ||
+      !classroom.teachers.includes(req.user._id)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You are not a teacher of this classroom.',
+      })
+    }
+
+    // Check if trying to remove the last teacher
+    if (classroom.teachers.length <= 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot remove the last teacher from the classroom',
+      })
+    }
+
+    // Check if teacher exists in the classroom
+    const teacherIndex = classroom.teachers.findIndex(
+      (t) => t.toString() === teacherId
+    )
+
+    if (teacherIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: 'Teacher not found in this classroom',
+      })
+    }
+
+    // Remove teacher from classroom
+    classroom.teachers.splice(teacherIndex, 1)
+    const updatedClassroom = await classroom.save()
+
+    // Populate teachers for response
+    await updatedClassroom.populate('teachers', 'firstName lastName email')
+
+    res.status(200).json({
+      success: true,
+      message: 'Co-teacher removed successfully',
+      data: {
+        classroom: {
+          id: updatedClassroom._id,
+          name: updatedClassroom.name,
+          subject: updatedClassroom.subject,
+          code: updatedClassroom.code,
+          teachers: updatedClassroom.teachers,
+          createdAt: updatedClassroom.createdAt,
+          updatedAt: updatedClassroom.updatedAt,
+        },
+      },
+    })
+  } catch (error) {
+    console.error('Remove co-teacher error:', error)
     res.status(500).json({
       success: false,
       message: 'Server error',
