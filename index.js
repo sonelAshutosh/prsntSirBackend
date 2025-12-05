@@ -11,6 +11,33 @@ const PORT = process.env.PORT || 5000
 app.use(express.json({ limit: '2mb' })) // Increased limit for base64 images
 app.use(cors())
 
+// ==========================================================
+// MongoDB Connection (for serverless)
+// ==========================================================
+let isConnected = false
+
+const connectDB = async () => {
+  if (isConnected) {
+    console.log('Using existing MongoDB connection')
+    return
+  }
+
+  try {
+    const db = await mongoose.connect(process.env.MONGO_URI, {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    })
+    isConnected = db.connections[0].readyState === 1
+    console.log('Connected to MongoDB')
+  } catch (error) {
+    console.error('Error connecting to MongoDB:', error)
+    throw error
+  }
+}
+
+// Connect to database immediately
+connectDB()
+
 app.get('/', (req, res) => {
   res.send({ message: 'API is running...' })
 })
@@ -32,15 +59,12 @@ app.use('/api/attendance', attendanceRoutes)
 
 // ==========================================================
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`)
+// For local development
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`)
+  })
+}
 
-  mongoose
-    .connect(process.env.MONGO_URI)
-    .then(() => {
-      console.log('Connected to MongoDB')
-    })
-    .catch((error) => {
-      console.error('Error connecting to MongoDB:', error)
-    })
-})
+// Export for Vercel serverless
+export default app
