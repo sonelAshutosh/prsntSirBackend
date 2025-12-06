@@ -150,7 +150,8 @@ export const getClassroomById = async (req, res) => {
           createdAt: classroom.createdAt,
           updatedAt: classroom.updatedAt,
           studentCount: await StudentProfile.countDocuments({
-            classesJoined: classroom._id,
+            'classesJoined.classroomId': classroom._id,
+            'classesJoined.status': 'ACTIVE',
           }),
         },
       },
@@ -523,7 +524,10 @@ export const getClassroomStudents = async (req, res) => {
       })
     }
 
-    const classroom = await Classroom.findById(req.params.id)
+    const { status = 'active' } = req.query // active | left | all
+    const classroomId = req.params.id
+
+    const classroom = await Classroom.findById(classroomId)
 
     if (!classroom) {
       return res.status(404).json({
@@ -541,21 +545,45 @@ export const getClassroomStudents = async (req, res) => {
     }
 
     // Find all student profiles that have this classroom in their classesJoined array
-    const students = await StudentProfile.find({
-      classesJoined: classroom._id,
+    const studentProfiles = await StudentProfile.find({
+      'classesJoined.classroomId': classroomId,
+    }).populate('userId', 'firstName lastName email profileImage')
+
+    // Format and filter students
+    const students = []
+
+    for (const profile of studentProfiles) {
+      const enrollment = profile.classesJoined.find(
+        (c) => c.classroomId.toString() === classroomId.toString()
+      )
+
+      if (!enrollment) continue
+
+      // Filter by status
+      if (status === 'active' && enrollment.status !== 'ACTIVE') continue
+      if (status === 'left' && enrollment.status !== 'LEFT') continue
+      // 'all' shows everything
+
+      students.push({
+        studentId: profile.studentId,
+        userId: profile.userId,
+        enrollmentStatus: enrollment.status,
+        joinedAt: enrollment.joinedAt,
+        leftAt: enrollment.leftAt,
+      })
+    }
+
+    // Sort: Active first, then by join date
+    students.sort((a, b) => {
+      if (a.enrollmentStatus !== b.enrollmentStatus) {
+        return a.enrollmentStatus === 'ACTIVE' ? -1 : 1
+      }
+      return new Date(b.joinedAt) - new Date(a.joinedAt)
     })
-      .populate('userId', 'firstName lastName email profileImage')
-      .sort({ createdAt: 1 }) // Sort by join date (oldest first)
 
     res.status(200).json({
       success: true,
-      data: {
-        students: students.map((student) => ({
-          studentId: student.studentId,
-          userId: student.userId,
-          joinedAt: student.createdAt,
-        })),
-      },
+      data: { students },
     })
   } catch (error) {
     console.error('Get classroom students error:', error)

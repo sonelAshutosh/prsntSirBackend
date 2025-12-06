@@ -73,6 +73,24 @@ export const createAttendanceSession = async (req, res) => {
       topic: topic || 'General Class',
     })
 
+    // Create attendance records for all ACTIVE students
+    const studentProfiles = await StudentProfile.find({
+      'classesJoined.classroomId': classroomId,
+      'classesJoined.status': 'ACTIVE',
+    })
+
+    // Create attendance records with default status ABSENT
+    const attendanceRecords = studentProfiles.map((profile) => ({
+      studentId: profile.userId,
+      sessionId: session._id,
+      classroomId: classroomId,
+      status: 'ABSENT', // Default to absent
+    }))
+
+    if (attendanceRecords.length > 0) {
+      await AttendanceRecord.insertMany(attendanceRecords)
+    }
+
     res.status(201).json({
       success: true,
       message: 'Attendance session created successfully',
@@ -121,22 +139,35 @@ export const getSessionStudents = async (req, res) => {
       })
     }
 
-    // Get all students enrolled in this classroom
-    const studentProfiles = await StudentProfile.find({
-      classesJoined: session.classroomId,
-    }).populate('userId', 'firstName lastName email profileImage')
-
-    // Get existing attendance records for this session
-    const existingRecords = await AttendanceRecord.find({
+    // Get all attendance records for this session (exclude deleted)
+    const attendanceRecords = await AttendanceRecord.find({
       sessionId: session._id,
+      deletedAt: null,
+    }).populate('studentId', 'firstName lastName email profileImage')
+
+    // Get student profiles to get studentId
+    const studentIds = attendanceRecords.map((r) => r.studentId._id)
+    const studentProfiles = await StudentProfile.find({
+      userId: { $in: studentIds },
     })
 
-    const markedStudentIds = existingRecords.map((r) => r.studentId.toString())
+    // Create a map of userId to studentId
+    const userIdToStudentId = {}
+    studentProfiles.forEach((profile) => {
+      userIdToStudentId[profile.userId.toString()] = profile.studentId
+    })
 
-    // Filter out already marked students
-    const unmarkedStudents = studentProfiles.filter(
-      (profile) => !markedStudentIds.includes(profile.userId._id.toString())
-    )
+    // Map records to student data with attendance status
+    const students = attendanceRecords.map((record) => ({
+      id: record.studentId._id,
+      firstName: record.studentId.firstName,
+      lastName: record.studentId.lastName,
+      email: record.studentId.email,
+      profileImage: record.studentId.profileImage,
+      studentId: userIdToStudentId[record.studentId._id.toString()] || 'N/A',
+      attendanceStatus: record.status, // PRESENT or ABSENT
+      attendanceRecordId: record._id,
+    }))
 
     res.status(200).json({
       success: true,
@@ -147,17 +178,12 @@ export const getSessionStudents = async (req, res) => {
           mode: session.mode,
           createdAt: session.createdAt,
         },
-        students: unmarkedStudents.map((profile) => ({
-          id: profile.userId._id,
-          firstName: profile.userId.firstName,
-          lastName: profile.userId.lastName,
-          email: profile.userId.email,
-          profileImage: profile.userId.profileImage,
-          studentId: profile.studentId,
-        })),
-        totalStudents: studentProfiles.length,
-        unmarkedCount: unmarkedStudents.length,
-        markedCount: markedStudentIds.length,
+        students,
+        totalStudents: students.length,
+        unmarkedCount: students.filter((s) => s.attendanceStatus === 'ABSENT')
+          .length,
+        markedCount: students.filter((s) => s.attendanceStatus === 'PRESENT')
+          .length,
       },
     })
   } catch (error) {
@@ -195,10 +221,11 @@ export const getMarkedStudents = async (req, res) => {
       })
     }
 
-    // Get attendance records for this session
+    // Get attendance records for this session (exclude deleted)
     const records = await AttendanceRecord.find({
       sessionId: session._id,
       status: 'PRESENT',
+      deletedAt: null,
     }).populate('studentId', 'firstName lastName email profileImage')
 
     // Get student profiles to include studentId
@@ -346,7 +373,10 @@ export const endAttendanceSession = async (req, res) => {
     await session.save()
 
     // Get session summary
-    const records = await AttendanceRecord.find({ sessionId: session._id })
+    const records = await AttendanceRecord.find({
+      sessionId: session._id,
+      deletedAt: null,
+    })
     const presentCount = records.filter((r) => r.status === 'PRESENT').length
     const absentCount = records.filter((r) => r.status === 'ABSENT').length
 
@@ -409,10 +439,18 @@ export const getClassroomSessions = async (req, res) => {
     // Enrich sessions with stats
     const sessionsWithStats = await Promise.all(
       sessions.map(async (session) => {
-        const records = await AttendanceRecord.find({ sessionId: session._id })
-        const totalStudents = await StudentProfile.countDocuments({
-          classesJoined: classroomId,
+        const records = await AttendanceRecord.find({
+          sessionId: session._id,
+          deletedAt: null,
         })
+
+        // Total students = current ACTIVE students in classroom
+        // This shows attendance as a percentage of current enrollment
+        const totalStudents = await StudentProfile.countDocuments({
+          'classesJoined.classroomId': classroomId,
+          'classesJoined.status': 'ACTIVE',
+        })
+
         const presentCount = records.filter(
           (r) => r.status === 'PRESENT'
         ).length
@@ -455,16 +493,28 @@ export const getStudentAttendanceHistory = async (req, res) => {
     const { classroomId } = req.params
     const studentId = req.user._id
 
-    // Verify student is enrolled
+    // Verify student is enrolled (with new schema)
     const studentProfile = await StudentProfile.findOne({
       userId: studentId,
-      classesJoined: classroomId,
+      'classesJoined.classroomId': classroomId,
     })
 
     if (!studentProfile) {
       return res.status(403).json({
         success: false,
         message: 'You are not enrolled in this classroom',
+      })
+    }
+
+    // Check if student has left the classroom
+    const enrollment = studentProfile.classesJoined.find(
+      (c) => c.classroomId.toString() === classroomId.toString()
+    )
+
+    if (enrollment && enrollment.status === 'LEFT') {
+      return res.status(403).json({
+        success: false,
+        message: 'You have left this classroom',
       })
     }
 
@@ -480,6 +530,7 @@ export const getStudentAttendanceHistory = async (req, res) => {
     const records = await AttendanceRecord.find({
       studentId: studentId,
       classroomId,
+      deletedAt: null,
     })
 
     // Map sessions to include student status
@@ -579,42 +630,66 @@ export const markAttendanceByQR = async (req, res) => {
       })
     }
 
-    // Check enrollment in either User.enrolledClasses or StudentProfile.classesJoined
-    const isEnrolledInUser =
-      student.enrolledClasses &&
-      student.enrolledClasses.includes(session.classroomId)
-    const isEnrolledInProfile =
-      studentProfile.classesJoined &&
-      studentProfile.classesJoined.includes(session.classroomId)
+    // Check enrollment with new schema
+    const enrollment = studentProfile.classesJoined?.find(
+      (c) => c.classroomId.toString() === session.classroomId.toString()
+    )
 
-    if (!isEnrolledInUser && !isEnrolledInProfile) {
+    if (!enrollment || enrollment.status !== 'ACTIVE') {
       return res.status(400).json({
         success: false,
-        message: 'Student is not enrolled in this classroom',
+        message: 'Student is not enrolled in this classroom or has left',
       })
     }
 
-    // Check if attendance already marked
+    // Check if attendance record exists
     const existingRecord = await AttendanceRecord.findOne({
       studentId: studentProfile.userId,
       sessionId: session._id,
+      deletedAt: null,
     })
 
     if (existingRecord) {
-      return res.status(400).json({
-        success: false,
-        message: `Attendance already marked as ${existingRecord.status} for this student`,
+      // If already marked PRESENT, don't allow re-scanning
+      if (existingRecord.status === 'PRESENT') {
+        return res.status(400).json({
+          success: false,
+          message: 'Attendance already marked as PRESENT for this student',
+          data: {
+            student: {
+              name: `${student.firstName} ${student.lastName}`,
+              studentId: studentProfile.studentId,
+              status: existingRecord.status,
+            },
+          },
+        })
+      }
+
+      // Update ABSENT → PRESENT
+      existingRecord.status = 'PRESENT'
+      existingRecord.markedBy = req.user._id
+      await existingRecord.save()
+
+      return res.status(200).json({
+        success: true,
+        message: 'Attendance marked successfully',
         data: {
           student: {
+            id: student._id,
             name: `${student.firstName} ${student.lastName}`,
             studentId: studentProfile.studentId,
+            email: student.email,
+          },
+          record: {
+            id: existingRecord._id,
             status: existingRecord.status,
+            markedAt: existingRecord.updatedAt,
           },
         },
       })
     }
 
-    // Create attendance record
+    // Create attendance record (shouldn't happen if session creation works correctly)
     const record = await AttendanceRecord.create({
       studentId: studentProfile.userId,
       sessionId: session._id,

@@ -20,8 +20,24 @@ const StudentProfileSchema = new mongoose.Schema(
     },
     classesJoined: [
       {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Classroom',
+        classroomId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'Classroom',
+          required: true,
+        },
+        status: {
+          type: String,
+          enum: ['ACTIVE', 'LEFT'],
+          default: 'ACTIVE',
+        },
+        joinedAt: {
+          type: Date,
+          default: Date.now,
+        },
+        leftAt: {
+          type: Date,
+          default: null,
+        },
       },
     ],
   },

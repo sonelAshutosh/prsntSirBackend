@@ -3,6 +3,7 @@ import {
   getStudentProfile,
   regenerateQRCode,
   joinClassroom,
+  leaveClassroom,
   getStudentClassrooms,
 } from '../controllers/studentController.js'
 import { protect } from '../middleware/authMiddleware.js'
@@ -20,6 +21,9 @@ router.post('/regenerate-qr', regenerateQRCode)
 
 // POST /api/student/join-class - Join a classroom
 router.post('/join-class', joinClassroom)
+
+// POST /api/student/leave-classroom/:classroomId - Leave a classroom
+router.post('/leave-classroom/:classroomId', leaveClassroom)
 
 // GET /api/student/my-classes - Get student's joined classes
 router.get('/my-classes', getStudentClassrooms)

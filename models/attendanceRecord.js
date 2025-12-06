@@ -22,6 +22,10 @@ const AttendanceRecordSchema = new mongoose.Schema(
       enum: ['PRESENT', 'ABSENT'],
       default: 'PRESENT',
     },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 )
