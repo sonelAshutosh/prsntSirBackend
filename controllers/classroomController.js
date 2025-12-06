@@ -1,6 +1,8 @@
 import Classroom from '../models/classroom.js'
 import User from '../models/user.js'
 import StudentProfile from '../models/studentProfile.js'
+import AttendanceSession from '../models/attendanceSessions.js'
+import AttendanceRecord from '../models/attendanceRecord.js'
 
 // Generate a unique 6-character classroom code
 const generateClassCode = () => {
@@ -226,7 +228,7 @@ export const updateClassroom = async (req, res) => {
 
 // @desc    Delete classroom
 // @route   DELETE /api/classroom/:id
-// @access  Private (Teacher only)
+// @access  Private (Creator only)
 export const deleteClassroom = async (req, res) => {
   try {
     const classroom = await Classroom.findById(req.params.id)
@@ -238,22 +240,38 @@ export const deleteClassroom = async (req, res) => {
       })
     }
 
-    // Check if user is a teacher of this classroom
+    // Check if user is the creator (0th teacher)
     if (
       req.user.role !== 'TEACHER' ||
-      !classroom.teachers.includes(req.user._id)
+      classroom.teachers[0].toString() !== req.user._id.toString()
     ) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied. You are not a teacher of this classroom.',
+        message: 'Access denied. Only the classroom creator can delete it.',
       })
     }
 
-    await Classroom.findByIdAndDelete(req.params.id)
+    // Delete all related data
+    const classroomId = req.params.id
+
+    // 1. Delete all attendance sessions
+    await AttendanceSession.deleteMany({ classroomId })
+
+    // 2. Delete all attendance records
+    await AttendanceRecord.deleteMany({ classroomId })
+
+    // 3. Remove classroom from all student profiles
+    await StudentProfile.updateMany(
+      { 'classesJoined.classroomId': classroomId },
+      { $pull: { classesJoined: { classroomId } } }
+    )
+
+    // 4. Delete the classroom
+    await Classroom.findByIdAndDelete(classroomId)
 
     res.status(200).json({
       success: true,
-      message: 'Classroom deleted successfully',
+      message: 'Classroom and all related data deleted successfully',
     })
   } catch (error) {
     console.error('Delete classroom error:', error)
