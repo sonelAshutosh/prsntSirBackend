@@ -567,6 +567,14 @@ export const getClassroomStudents = async (req, res) => {
       'classesJoined.classroomId': classroomId,
     }).populate('userId', 'firstName lastName email profileImage')
 
+    // Get all completed sessions for this classroom
+    const completedSessions = await AttendanceSession.find({
+      classroomId: classroomId,
+      endedAt: { $ne: null },
+    }).select('_id')
+
+    const sessionIds = completedSessions.map((session) => session._id)
+
     // Format and filter students
     const students = []
 
@@ -582,12 +590,50 @@ export const getClassroomStudents = async (req, res) => {
       if (status === 'left' && enrollment.status !== 'LEFT') continue
       // 'all' shows everything
 
+      // Calculate attendance statistics for this student
+      let attendancePercentage = 0
+      let totalSessions = 0
+      let presentCount = 0
+
+      if (sessionIds.length > 0) {
+        // Count total sessions this student could have attended
+        // (sessions that occurred after they joined and before they left if applicable)
+        const relevantSessions = await AttendanceSession.find({
+          _id: { $in: sessionIds },
+          createdAt: { $gte: enrollment.joinedAt },
+          ...(enrollment.leftAt && { createdAt: { $lte: enrollment.leftAt } }),
+        })
+
+        totalSessions = relevantSessions.length
+
+        if (totalSessions > 0) {
+          // Count how many sessions the student was marked present
+          // Use profile.userId because AttendanceRecord.studentId references User model
+          const attendanceRecords = await AttendanceRecord.find({
+            classroomId: classroomId,
+            studentId: profile.userId,
+            sessionId: { $in: relevantSessions.map((s) => s._id) },
+            status: 'PRESENT',
+          })
+
+          presentCount = attendanceRecords.length
+          attendancePercentage = Math.round(
+            (presentCount / totalSessions) * 100
+          )
+        }
+      }
+
       students.push({
         studentId: profile.studentId,
         userId: profile.userId,
         enrollmentStatus: enrollment.status,
         joinedAt: enrollment.joinedAt,
         leftAt: enrollment.leftAt,
+        attendanceStats: {
+          totalSessions,
+          presentCount,
+          attendancePercentage,
+        },
       })
     }
 
